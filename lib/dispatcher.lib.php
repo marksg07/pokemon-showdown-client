@@ -750,7 +750,6 @@ class TeamsActionHandler {
 	 * Server only.
 	 */
 	public function uploadteam($dispatcher, &$reqData, &$out) {
-		error_log('Uploadinggggggg');
 	 	global $psdb, $teams;
 
 		$server = $dispatcher->findServer();
@@ -765,9 +764,7 @@ class TeamsActionHandler {
 		$format = $psdb->escape(@$reqData['format']);
 		$packedteam = $psdb->escape(@$reqData['packedteam']);
 		$public = intval(@$reqData['public']);
-		error_log("aiaiai");
 		if($public < 0 || $public > 1 || !$packedteam || !$format || !$teamname || !$userid) {
-			error_log("euuuuuuuuu");
 			$out = 0;
 			return;
 		}
