@@ -27,7 +27,7 @@ if (preg_match('/^http\\:\\/\\/[a-z0-9]+\\.psim\\.us\\//', $_SERVER['HTTP_REFERE
 // header("X-Debug: " . @$_SERVER['HTTP_REFERER']);
 
 include_once 'lib/ntbb-session.lib.php';
-include_once '../pokemonshowdown.com/config/servers.inc.php';
+include_once 'config/servers.inc.php';
 include_once 'lib/dispatcher.lib.php';
 
 $dispatcher = new ActionDispatcher(array(

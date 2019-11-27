@@ -1,9 +1,9 @@
-Config.origindomain = 'play.pokemonshowdown.com';
+Config.origindomain = 'localhost:8000';
 // `defaultserver` specifies the server to use when the domain name in the
 // address bar is `Config.origindomain`.
 Config.defaultserver = {
 	id: 'showdown',
-	host: 'sim2.psim.us',
+	host: 'localhost.psim.us',
 	port: 443,
 	httpport: 8000,
 	altport: 80,

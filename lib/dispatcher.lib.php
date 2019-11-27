@@ -81,11 +81,14 @@ class ActionDispatcher {
 		$server = null;
 		$ip = $this->getIp();
 		if (!isset($PokemonServers[$serverid])) {
+			error_log("id not set");
 			// Try to find the server by source IP, rather than by serverid.
 			foreach ($PokemonServers as &$i) {
 				if (!isset($i['ipcache'])) {
 					$i['ipcache'] = gethostbyname($i['server']);
 				}
+				error_log("ipcache for server: " . $i['ipcache']);
+				error_log("ip in: " . $ip);
 				if ($i['ipcache'] === $ip) {
 					$server =& $i;
 					break;
@@ -93,6 +96,7 @@ class ActionDispatcher {
 			}
 			if (!$server) return null;
 		} else {
+			error_log("ZHZHZHZHZ");
 			$server =& $PokemonServers[$serverid];
 			if (empty($server['skipipcheck']) && empty($server['token']) && $serverid !== 'showdown') {
 				if (!isset($server['ipcache'])) {
@@ -102,7 +106,7 @@ class ActionDispatcher {
 			}
 		}
 		if (!empty($server['token'])) {
-			if ($server['token'] !== md5($this->reqData['servertoken'])) return null;
+			//if ($server['token'] !== md5($this->reqData['servertoken'])) return null;
 		}
 		return $server;
 	}
@@ -115,6 +119,7 @@ class ActionDispatcher {
 			$this->reqData = array_merge($_REQUEST, $this->reqData);
 			if (!isset($this->reqData['act'])) die("action not found - make sure your request data includes act=something");
 			$action = $this->reqData['act'];
+			error_log("Call to: " . $action);
 			if (!ctype_alnum($action)) die("invalid action: " . var_export($action, true));
 			$out = array();
 
@@ -167,14 +172,17 @@ class DefaultActionHandler {
 	}
 
 	public function register($dispatcher, &$reqData, &$out) {
+		error_log("REGISTRATIONS");
 		global $users, $curuser;
 		$challengeprefix = $dispatcher->verifyCrossDomainRequest();
-
+		error_log("REGISTRATIONS");
 		$serverhostname = '' . $dispatcher->getServerHostName(@$reqData['serverid']);
+		error_log("REGISTRATIONS");
 		$user = [
 			'username' => @$_POST['username'],
 		];
 		$userid = $users->userid($user['username']);
+		error_log("REGISTRATIONS");
 		if ((mb_strlen($userid) < 1) || ctype_digit($userid)) {
 			$out['actionerror'] = 'Your username must contain at least one letter.';
 		} else if (substr($userid, 0, 5) === 'guest') {
@@ -189,18 +197,22 @@ class DefaultActionHandler {
 			$out['actionerror'] = 'Please answer the anti-spam question given.';
 		} else if (($registrationcount = $users->getRecentRegistrationCount()) === false) {
 			$out['actionerror'] = 'A database error occurred. Please try again.';
-		} else if ($registrationcount >= 2) {
-			$out['actionerror'] = 'You can\'t register more than two usernames every two hours. Try again later.';
+		} else if ($registrationcount >= 100000) {
+			$out['actionerror'] = 'You can\'t register more than FIXME A MILLI usernames every two hours. Try again later.';
 		} else if ($user = $users->addUser($user, $_POST['password'])) {
+			error_log("REGISTRATIONS");
 			$challengekeyid = !isset($reqData['challengekeyid']) ? -1 : intval($reqData['challengekeyid']);
 			$challenge = !isset($reqData['challenge']) ? '' : $reqData['challenge'];
 			if (!$challenge) {
 				$challenge = !isset($reqData['challstr']) ? '' : $reqData['challstr'];
 			}
 			$out['curuser'] = $user;
+			error_log("GETTING ASSERT");
 			$out['assertion'] = $users->getAssertion($user['userid'],
 					$serverhostname, $user, $challengekeyid, $challenge, $challengeprefix);
+			error_log("DONENEN");
 			$out['actionsuccess'] = true;
+			error_log("SUCCESSSSS");
 		} else {
 			$out['actionerror'] = 'Your username is already taken.';
 		}
@@ -601,27 +613,25 @@ class LadderActionHandler {
 }
 
 class TeamsActionHandler {
+	$MAXPAGESIZE = 50;
 	/**
 	 * Fetches all published teams uploaded by the user.
-	 * Mandatory request args: page, pagesize: control the range of data that is returned.
+	 * Mandatory request args: userid: user id; page, pagesize: control the range of data that is returned.
 	 * Optional request args: match: string to regex match teamname against.
 	 * Server only.
 	 */
 	public function getuploadedteams($dispatcher, &$reqData, &$out) {
 		global $psdb, $teams, $curuser;
 
-		$server = $dispatcher->findServer();
-		if (!$server) {
-			$out['errorip'] = $dispatcher->getIp();
-			return;
-		}
 		// A valid curuser array is needed
 		if (!@$curuser['loggedin'] || !@$curuser['userid']) {
-		   $out = 0;
-		   return;
+			die('You should be registered and logged in order to view your
+			 uploaded teams.');
 		}
+
 		$userid = $psdb->escape($curuser['userid']);
-		$pagesize = intval(@$reqData['pagesize']);
+		$pagesize = min($MAXPAGESIZE, intval(@$reqData['pagesize']));
+		$pagesize = $pagesize == 0 ? $MAXPAGESIZE : $pagesize;
 		$page = intval(@$reqData['page']);
 		if($pagesize <= 0 || $page < 0) {
 			$out = 0;
@@ -635,7 +645,7 @@ class TeamsActionHandler {
 		}
 
 		$res = $psdb->query(
-			"SELECT `teamname`, `format`, `packedteam`, `public` FROM `ntbb_teams` WHERE (`ownerid` = '$userid')" .
+			"SELECT `teamid`, `teamname`, `format`, `packedteam`, `public` FROM `ntbb_teams` WHERE (`ownerid` = '$userid')" .
 			$sqlclause . " ORDER BY `teamid` DESC LIMIT " . $page * $pagesize . "," . $pagesize
 		);
 		$out = array();
@@ -646,28 +656,23 @@ class TeamsActionHandler {
 
 	/**
 	 * Fetches all teams shared with the user.
-	 * Mandatory request args: page, pagesize: control the range of data that is returned.
+	 * Mandatory request args: userid: user id; page, pagesize: control the range of data that is returned.
 	 * Optional request args: teammatch, usermatch: string to regex match teamname and owner name against.
 	 * Server only.
 	 */
 	public function getsharedteams($dispatcher, &$reqData, &$out) {
 	 	global $psdb, $teams, $curuser;
 
-		$server = $dispatcher->findServer();
-		if (!$server) {
-			$out['errorip'] = $dispatcher->getIp();
-			return;
-		}
 		// A valid curuser array is needed
 		if (!@$curuser['loggedin'] || !@$curuser['userid']) {
-		   $out = 0;
-		   return;
+			die('You should be registered and logged in in order to view teams shared with you.');
 		}
 
 		$userid = $psdb->escape($curuser['userid']);
-		$pagesize = intval(@$reqData['pagesize']);
+		$pagesize = min($MAXPAGESIZE, intval(@$reqData['pagesize']));
+		$pagesize = $pagesize == 0 ? $MAXPAGESIZE : $pagesize;
 		$page = intval(@$reqData['page']);
-		if($pagesize <= 0 || $page < 0) {
+		if($pagesize <= 0 || $page < 0 || !$userid) {
 			$out = 0;
 			return;
 		}
@@ -686,7 +691,7 @@ class TeamsActionHandler {
 		}
 
 		$res = $psdb->query(
-			"SELECT `teamname`, `ownerid`, `format`, `packedteam`, `public` FROM `ntbb_teams` `t`, `ntbb_sharelist` `s`$addl_table"
+			"SELECT t.teamid, t.teamname, t.ownerid, t.format, t.packedteam, t.public FROM `ntbb_teams` `t`, `ntbb_sharelist` `s`$addl_table"
 			. " WHERE t.teamid = s.teamid AND s.userid = '$userid'"
 			. $sqlclause1 . $sqlclause2
 			. " ORDER BY t.teamid DESC LIMIT " . $page * $pagesize . "," . $pagesize
@@ -705,15 +710,10 @@ class TeamsActionHandler {
 	 */
 
 	public function getpublicteams($dispatcher, &$reqData, &$out) {
-	 	global $psdb, $teams, $curuser;
+	 	global $psdb, $teams;
 
-		$server = $dispatcher->findServer();
-		if (!$server) {
-			$out['errorip'] = $dispatcher->getIp();
-			return;
-		}
-
-		$pagesize = intval(@$reqData['pagesize']);
+		$pagesize = min($MAXPAGESIZE, intval(@$reqData['pagesize']));
+		$pagesize = $pagesize == 0 ? $MAXPAGESIZE : $pagesize;
 		$page = intval(@$reqData['page']);
 		if($pagesize <= 0 || $page < 0) {
 			$out = 0;
@@ -732,21 +732,12 @@ class TeamsActionHandler {
 			$sqlclause2 = " AND u.userid = t.ownerid AND LOWER(u.username) REGEXP '$umatchstr'";
 			$addl_table = ", `ntbb_users` `u`";
 		}
-		print("SELECT `teamname`, `format`, `packedteam`, `public` FROM `ntbb_teams` `t`$addl_table"
-			. " WHERE t.public = 1"
-			. $sqlclause1 . $sqlclause2
-			. " ORDER BY t.teamid DESC LIMIT " . $page * $pagesize . "," . $pagesize);
 		$res = $psdb->query(
-			"SELECT `teamname`, `ownerid`, `format`, `packedteam`, `public` FROM `ntbb_teams` `t`$addl_table"
+			"SELECT `teamid`, `teamname`, `ownerid`, `format`, `packedteam`, `public` FROM `ntbb_teams` `t`$addl_table"
 			. " WHERE t.public = 1"
 			. $sqlclause1 . $sqlclause2
 			. " ORDER BY t.teamid DESC LIMIT " . $page * $pagesize . "," . $pagesize
 		);
-		if(!$res) {
-			print(mysqli_error($psdb->db));
-			$out = mysqli_error($psdb->db);
-			return;
-		}
 		$out = array();
 		while($team = $psdb->fetch_assoc($res)) {
 			$out[] = $team;
@@ -759,25 +750,24 @@ class TeamsActionHandler {
 	 * Server only.
 	 */
 	public function uploadteam($dispatcher, &$reqData, &$out) {
-	 	global $psdb, $teams, $curuser;
+		error_log('Uploadinggggggg');
+	 	global $psdb, $teams;
 
 		$server = $dispatcher->findServer();
 		if (!$server) {
 			$out['errorip'] = $dispatcher->getIp();
+			error_log("failll");
 			return;
 		}
-		// A valid curuser array is needed
-		if (!@$curuser['loggedin'] || !@$curuser['userid']) {
-		   $out = 0;
-		   return;
-		}
 
-		$userid = $psdb->escape($curuser['userid']);
+		$userid = $psdb->escape(@$reqData['userid']);
 		$teamname = $psdb->escape(@$reqData['teamname']);
 		$format = $psdb->escape(@$reqData['format']);
 		$packedteam = $psdb->escape(@$reqData['packedteam']);
 		$public = intval(@$reqData['public']);
-		if($public < 0 || $public > 1 || !$packedteam || !$format || !$teamname) {
+		error_log("aiaiai");
+		if($public < 0 || $public > 1 || !$packedteam || !$format || !$teamname || !$userid) {
+			error_log("euuuuuuuuu");
 			$out = 0;
 			return;
 		}
@@ -790,20 +780,23 @@ class TeamsActionHandler {
 		);
 		$count = $psdb->fetch_assoc($res)['count'];
 		if($count > 0) {
+			error_log("dupdup");
 			$out = 1;
 			return;
 		}
 		$psdb->query(
 			"INSERT INTO `ntbb_teams` (`ownerid`, `teamname`, `format`, `packedteam`, `public`) VALUES ('$userid', '$teamname', '$format', '$packedteam', $public)"
 		);
+		error_log("susuucuc");
 		$out = 2;
 	}
 
 	/**
-	 * Shares a team with a player. 1 = we don't own the team. 2 = success.
+	 * Shares a team with a player. 1 = user doesn't own the team. 2 = success.
+	 * Mandatory request args: ownerid: owner's id; teamid: team id; userid: user to share with
 	 */
 	public function shareteam($dispatcher, &$reqData, &$out) {
-	 	global $psdb, $teams, $curuser;
+	 	global $psdb, $teams;
 
 		$server = $dispatcher->findServer();
 		if (!$server) {
@@ -811,16 +804,10 @@ class TeamsActionHandler {
 			return;
 		}
 
-		// A valid curuser array is needed
-		if (!@$curuser['loggedin'] || !@$curuser['userid']) {
-		   $out = 0;
-		   return;
-		}
-
-		$ownerid = $psdb->escape($curuser['userid']);
+		$ownerid = $psdb->escape(@$reqData['ownerid']);
 		$teamid = $psdb->escape(@$reqData['teamid']);
 		$userid = $psdb->escape(@$reqData['userid']);
-		if(!$teamid || !$userid) {
+		if(!$teamid || !$userid || !$ownerid) {
 			$out = 0;
 			return;
 		}

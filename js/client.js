@@ -213,7 +213,7 @@ function toId() {
 		getActionPHP: function () {
 			var ret = '/~~' + Config.server.id + '/action.php';
 			if (Config.testclient) {
-				ret = 'https://' + Config.origindomain + ret;
+			    ret = 'http://localhost:7999/action.php';
 			}
 			return (this.getActionPHP = function () {
 				return ret;
@@ -280,7 +280,8 @@ function toId() {
 			}
 
 			if (this.get('userid') !== userid) {
-				var self = this;
+			    var self = this;
+			    app.addPopupMessage("you are here");
 				$.post(this.getActionPHP(), {
 					act: 'getassertion',
 					userid: userid,

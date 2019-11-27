@@ -52,7 +52,7 @@ class PSPrefs extends PSModel {
 
 	storageEngine: 'localStorage' | 'iframeLocalStorage' | '' = '';
 	storage: {[k: string]: any} = {};
-	readonly origin = 'http://localhost:8000';
+	readonly origin = 'https://play.pokemonshowdown.com';
 	constructor() {
 		super();
 
@@ -259,12 +259,12 @@ interface PSGroup {
 
 class PSServer {
 	id = 'showdown';
-	host = 'localhost';
+	host = 'sim2.psim.us';
 	port = 8000;
 	altport = 80;
 	registered = true;
 	prefix = '/showdown';
-	protocol: 'http' | 'https' = 'http';
+	protocol: 'http' | 'https' = 'https';
 	groups: {[symbol: string]: PSGroup} = {
 		'~': {
 			name: "Administrator (~)",

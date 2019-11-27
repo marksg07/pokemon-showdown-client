@@ -267,6 +267,7 @@ class NTBBSession {
 		if ($user['banstate'] >= 100) {
 			return $curuser;
 		}
+		error_log("verification inc");
 		if (!$this->passwordVerifyInner($userid, $pass, $user)) {
 			if ($debug) error_log('wrong password');
 			return $curuser;
@@ -276,7 +277,7 @@ class NTBBSession {
 			$timeout = 2*7*24*60*60;
 		}
 		$timeout += $ctime;
-
+		error_log("doin thangs");
 		$this->sid = $this->mksid($this->sid);
 		$nsidhash = $this->sidHash($this->sid);
 		$res = $psdb->query(
@@ -444,6 +445,7 @@ class NTBBSession {
 	}
 
 	function getAssertion($userid, $serverhostname, $user = null, $challengekeyid = -1, $challenge = '', $challengeprefix = '') {
+		error_log("in getAssertion");
 		global $psdb, $curuser, $psconfig;
 
 		if (substr($userid, 0, 5) === 'guest') {
@@ -570,6 +572,7 @@ class NTBBSession {
 
 		$sig = '';
 		openssl_sign($data, $sig, openssl_get_privatekey($psconfig['privatekeys'][$challengekeyid]));
+		error_log("returning from getAssertion");
 		return $data.';'.bin2hex($sig);
 	}
 
@@ -657,6 +660,7 @@ class NTBBSession {
 	}
 
 	function addUser($user, $password) {
+		error_log("In addUser");
 		global $psdb, $curuser;
 		$ctime = time();
 
@@ -681,7 +685,9 @@ class NTBBSession {
 		}
 
 		$user['usernum'] = $psdb->insert_id();
+		error_log("ABt to logoin");
 		$this->login($user['username'], $password);
+		error_log("done loggin");
 		if (!$curuser['loggedin'] || $curuser['userid'] !== $user['userid']) return false;
 		return $curuser;
 	}
