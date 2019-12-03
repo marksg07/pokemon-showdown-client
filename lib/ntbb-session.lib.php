@@ -6,7 +6,7 @@ require_once dirname(__FILE__) . '/ntbb-database.lib.php';
 $curuser = false;
 
 class NTBBSession {
-	var $cookiedomain = 'pokemonshowdown.com';
+	var $cookiedomain = '';
 	var $trustedproxies = array(
 		'103.21.244.0/22',
 		'103.22.200.0/22',
@@ -38,9 +38,12 @@ class NTBBSession {
 		// see if we're logged in
 		$scookie = $_POST['sid'] ?? $_COOKIE['sid'] ?? null;
 		if (!$scookie) {
+			error_log("NOT LOGGED");
 			// nope, not logged in
 			return;
 		}
+		error_log("LOGGED");
+		error_log($scookie);
 		$sid = '';
 		$session = 0;
 		$scsplit = explode(',', $scookie);
@@ -50,9 +53,9 @@ class NTBBSession {
 			$sid = $scsplit[2];
 			$this->sid = $sid;
 		}
-		if (!$session) {
+		/*if (!$session) {
 			return;
-		}
+		}*/
 		$res = $psdb->query(
 			"SELECT sid, timeout, `{$psdb->prefix}users`.* " .
 			"FROM `{$psdb->prefix}sessions`, `{$psdb->prefix}users` " .
@@ -296,7 +299,7 @@ class NTBBSession {
 		unset($curuser['password']);
 		unset($curuser['nonce']);
 		unset($curuser['passwordhash']);
-
+		error_log(json_encode($curuser));
 		setcookie('sid', $this->scookie, time() + (363)*24*60*60, '/', $this->cookiedomain, false, true);
 
 		return $curuser;

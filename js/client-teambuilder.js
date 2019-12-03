@@ -3,10 +3,15 @@
 	// this is a useful global
 	var teams;
 
+	var remoteFolders = {PUBLIC: 0, UPLOADED: 1, SHARED: 2};
+	var remoteFolderNames = ['Public teams', 'Uploaded teams', 'Teams shared with you'];
+	var remoteFolderActions = ['getpublicteams', 'getuploadedteams', 'getsharedteams'];
+
 	exports.TeambuilderRoom = exports.Room.extend({
 		type: 'teambuilder',
 		title: 'Teambuilder',
 		initialize: function () {
+			console.log('initializing team builder room');
 			teams = Storage.teams;
 
 			// left menu
@@ -72,7 +77,7 @@
 			// clipboard
 			'click .teambuilder-clipboard-data .result': 'clipboardResultSelect',
 			'click .teambuilder-clipboard-data': 'clipboardExpand',
-			'blur .teambuilder-clipboard-data': 'clipboardShrink'
+			'blur .teambuilder-clipboard-data': 'clipboardShrink',
 		},
 		dispatchClick: function (e) {
 			e.preventDefault();
@@ -112,6 +117,10 @@
 		curTeamLoc: 0,
 		curSet: null,
 		curSetLoc: 0,
+		remoteTeams: [null, null, null],
+		remotePageNums: [null, null, null],
+		lastPageFetched: [0, 0, 0],
+		pageSize: 20,
 
 		// curFolder will have '/' at the end if it's a folder, but
 		// it will be alphanumeric (so guaranteed no '/') if it's a
@@ -134,6 +143,7 @@
 				}
 				return this.updateTeamView();
 			}
+			console.log('reopining team interface');
 			return this.updateTeamInterface();
 		},
 
@@ -228,7 +238,7 @@
 					format = Storage.teams[i].format;
 					if (!format) format = 'gen7';
 				}
-				if (!format) continue;
+				if (!format || format.slice(0, 2) === '//') continue;
 				if (format in folderTable) continue;
 				folderTable[format] = 1;
 				if (format.slice(-1) === '/') {
@@ -315,11 +325,29 @@
 			buf += '<div class="foldersep"></div>';
 			buf += '<div class="folder"><div class="selectFolder" data-value="++"><i class="fa fa-plus"></i><em>(add folder)</em></div></div>';
 
+			buf += '<div class="foldersep"></div>';
+			for (var remoteId of [remoteFolders.PUBLIC, remoteFolders.UPLOADED, remoteFolders.SHARED]) {
+				var spec = "//" + remoteId;
+				var remoteName = remoteFolderNames[remoteId];
+				buf += '<div class="folder' + (this.curFolder === spec ? ' cur"><div class="folderhack3"><div class="folderhack1"></div><div class="folderhack2"></div>' : '">') + '<div class="selectFolder" data-value="' + spec + '"><i class="fa ' + (this.curFolder === spec ? 'fa-folder-open-o' : 'fa-folder-o') + '"></i>' + remoteName + '</div></div>' + (this.curFolder === spec ? '</div>' : '');
+			}
+
 			buf += '<div class="folderlistafter"></div></div>';
 
 			this.$('.folderpane').html(buf);
 		},
 		updateTeamList: function (resetScroll) {
+			var remoteId = null;
+			if(this.curFolder
+				&& this.curFolder.slice(0, 2) === '//') {
+				remoteId = parseInt(this.curFolder[2]);
+				if(!this.remoteTeams[remoteId]) {
+					this.$('.teampane').html('<h2>Loading...</h2>');
+					return;
+				}
+			}
+
+			var remote = (remoteId !== null);
 			var teams = Storage.teams;
 			var buf = '';
 
@@ -345,7 +373,12 @@
 					} else {
 						buf += '<h2><i class="fa fa-folder-open-o"></i> Teams not in any folders</h2>';
 					}
-				} else {
+				} else if (this.curFolder[0] === '/') {
+					if (remote) {
+						buf += '<h2><i class="fa fa-folder-open-o"></i> ' + remoteFolderNames[remoteId] + '</h2>';
+					}
+				}
+				else {
 					filterFormat = this.curFolder;
 					buf += '<h2><i class="fa fa-folder-open-o"></i> ' + filterFormat + '</h2>';
 				}
@@ -356,8 +389,10 @@
 			if (filterFormat && filterFormat !== 'gen7') {
 				newButtonText = "New " + BattleLog.escapeFormat(filterFormat) + " Team";
 			}
-			buf += '<p><button name="newTop" class="button big"><i class="fa fa-plus-circle"></i> ' + newButtonText + '</button> ' +
-					 '<input type="text" id="teamSearchBar" name="search" class="textbox searchinput" value="' + this.curSearchVal + '" placeholder="search teams"/></p>';
+			if(!remote) {
+				buf += '<p><button name="newTop" class="button big"><i class="fa fa-plus-circle"></i> ' + newButtonText + '</button> ';
+				buf += '<input type="text" id="teamSearchBar" name="search" class="textbox searchinput" value="' + this.curSearchVal + '" placeholder="search teams"/></p>';
+			}
 
 			buf += '<ul class="teamlist">';
 			var atLeastOne = false;
@@ -368,28 +403,29 @@
 				buf += '<li>== CAN\'T SAVE ==<br /><small><code>Cookies</code> are disabled so you can\'t save teams! Enable them in your browser settings.</small></li>';
 			}
 			if (Storage.cantSave) buf += '<li>== CAN\'T SAVE ==<br /><small>You hit your browser\'s limit for team storage! Please backup them and delete some of them. Your teams won\'t be saved until you\'re under the limit again.</small></li>';
-			if (!teams.length) {
+			var dispteams = this.getTeams();
+			if (!dispteams.length) {
 				if (this.deletedTeamLoc >= 0) {
 					buf += '<li><button name="undoDelete"><i class="fa fa-undo"></i> Undo Delete</button></li>';
 				}
 				buf += '<li><p><em>you don\'t have any teams lol</em></p></li>';
 			} else {
 
-				for (var i = 0; i < teams.length + 1; i++) {
+				for (var i = 0; i < dispteams.length + 1; i++) {
 					if (i === this.deletedTeamLoc) {
 						if (!atLeastOne) atLeastOne = true;
 						buf += '<li><button name="undoDelete"><i class="fa fa-undo"></i> Undo Delete</button></li>';
 					}
-					if (i >= teams.length) break;
+					if (i >= dispteams.length) break;
 
-					var team = teams[i];
+					var team = dispteams[i];
 
 					if (team && !team.team && team.team !== '') {
 						team = null;
 					}
 					if (!team) {
 						buf += '<li>Error: A corrupted team was dropped</li>';
-						teams.splice(i, 1);
+						dispteams.splice(i, 1);
 						i--;
 						if (this.deletedTeamLoc && this.deletedTeamLoc > i) this.deletedTeamLoc--;
 						continue;
@@ -420,17 +456,24 @@
 
 					if (!atLeastOne) atLeastOne = true;
 					var formatText = '';
+					var authorText = '';
 					if (team.format) {
 						formatText = '[' + team.format + '] ';
 					}
 					if (team.folder) formatText += team.folder + '/';
-
+					if (team.owner) authorText = ' by ' + team.owner;
 					// teams are <div>s rather than <button>s because Firefox doesn't
 					// support dragging and dropping buttons.
-					buf += '<li><div name="edit" data-value="' + i + '" class="team" draggable="true">' + formatText + '<strong>' + BattleLog.escapeHTML(team.name) + '</strong><br /><small>';
-					buf += Storage.getTeamIcons(team);
-					buf += '</small></div><button name="edit" value="' + i + '"><i class="fa fa-pencil" aria-label="Edit" title="Edit (you can also just click on the team)"></i></button><button name="newTop" value="' + i + '" title="Duplicate" aria-label="Duplicate"><i class="fa fa-clone"></i></button><button name="delete" value="' + i + '"><i class="fa fa-trash"></i> Delete</button></li>';
+					if(!remote) {
+						buf += '<li><div name="edit" data-value="' + i + '" class="team" draggable="true">' + formatText + '<strong>' + BattleLog.escapeHTML(team.name) + '</strong><br /><small>';
+						buf += Storage.getTeamIcons(team);
+						buf += '</small></div><button name="edit" value="' + i + '"><i class="fa fa-pencil" aria-label="Edit" title="Edit (you can also just click on the team)"></i></button><button name="newTop" value="' + i + '" title="Duplicate" aria-label="Duplicate"><i class="fa fa-clone"></i></button><button name="delete" value="' + i + '"><i class="fa fa-trash"></i> Delete</button></li>';
+					} else {
+						buf += '<li><div name="edit" data-value="' + i + '" class="team" draggable="true">' + formatText + '<strong>' + BattleLog.escapeHTML(team.name) + '</strong>' + authorText + '<br /><small>';
+						buf += Storage.getTeamIcons(team);
+						buf += '</small></div><button name="download" value="' + i + '"><i class="fa fa-cloud-download" aria-label="Download" title="Download this team to local storage"></i></button></li>';
 
+					}
 				}
 				if (!atLeastOne) {
 					if (filterFolder) {
@@ -475,10 +518,12 @@
 
 			//reset focus to searchbar
 			var teamSearchBar = this.$("#teamSearchBar");
-			var strLength = teamSearchBar.val().length;
-			if (strLength) {
-				teamSearchBar.focus();
-				teamSearchBar[0].setSelectionRange(strLength, strLength);
+			if(teamSearchBar.val()) {
+				var strLength = teamSearchBar.val().length;
+				if (strLength) {
+					teamSearchBar.focus();
+					teamSearchBar[0].setSelectionRange(strLength, strLength);
+				}
 			}
 		},
 		updatePersistence: function (state) {
@@ -595,8 +640,36 @@
 				this.curFolderKeep = format;
 			}
 			this.curFolder = (format === 'all' ? '' : format);
+			if (format.slice(0, 2) === '//') {
+				this.updateRemoteTeams(parseInt(format[2]));
+			}
 			this.updateFolderList();
 			this.updateTeamList(true);
+		},
+		updateRemoteTeams: function (remoteId) {
+			if (this.remoteTeams[remoteId] && this.remotePageNums[remoteId] === this.lastPageFetched[remoteId])
+				return;
+			if(!this.remotePageNums[remoteId])
+				this.remotePageNums[remoteId] = 1;
+			var self = this;
+			$.post(app.user.getActionPHP(), {act: remoteFolderActions[remoteId], page: this.remotePageNums[remoteId] - 1, pagesize: this.pageSize}, data => {
+				var response = JSON.parse(data.slice(1));
+				self.remoteTeams[remoteId] = [];
+				for (var team of response) {
+					self.remoteTeams[remoteId].push({
+						name: team.teamname,
+						format: team.format,
+						team: team.packedteam,
+						folder: '',
+						iconCache: '',
+						owner: team.ownerid,
+					});
+				}
+				// if we are still on the same page as the folder we are updating, update it
+				if(this.curFolder === '//' + remoteId)
+					this.updateTeamList(true);
+			});
+			this.lastPageFetched[remoteId] = this.remotePageNums[remoteId];
 		},
 		renameFolder: function () {
 			if (!this.curFolder) return;
@@ -661,13 +734,29 @@
 		reloadTeamsFolder: function () {
 			Storage.nwLoadTeams();
 		},
+		getTeams: function () {
+			if(this.curFolder && this.curFolder.slice(0, 2) === '//') {
+				return this.remoteTeams[parseInt(this.curFolder[2])];
+			}
+			return teams;
+		},
+		download: function(i) {
+			var useteams = this.getTeams();
+			if(useteams === teams) {
+				// we can't download from teams to teams
+				return;
+			}
+			var team = useteams[i];
+			teams.push(team);
+			Storage.saveAllTeams();
+		},
 		edit: function (i) {
 			this.teamScrollPos = this.$('.teampane').scrollTop();
 			if (i && i.currentTarget) {
 				i = $(i.currentTarget).data('value');
 			}
 			i = +i;
-			this.curTeam = teams[i];
+			this.curTeam = this.getTeams()[i];
 			this.curTeam.iconCache = '!';
 			this.curTeam.gen = this.getGen(this.curTeam.format);
 			Storage.activeSetList = this.curSetList = Storage.unpackTeam(this.curTeam.team);
