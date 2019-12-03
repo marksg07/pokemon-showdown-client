@@ -17,7 +17,7 @@
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE IF NOT EXISTS `ps_sessions` (
+CREATE TABLE IF NOT EXISTS `ntbb_sessions` (
   `session` bigint(20) NOT NULL AUTO_INCREMENT,
   `sid` varchar(255) NOT NULL,
   `userid` varchar(255) NOT NULL,
